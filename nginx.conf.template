@@ -38,11 +38,30 @@ map $uri $agent_link {
     /index.md  '</>; rel="alternate"; type="text/html", </sitemap.xml>; rel="sitemap", </llms.txt>; rel="describedby"';
 }
 
+# /files/ is a private Railway bucket, proxied. Railway buckets cannot be made
+# public, so somebody holding the credentials has to sign every request — and
+# the only thing running here is nginx. s3-signer.js does the SigV4; these four
+# variables are the whole interface to it. js_set caches a value for the life
+# of the request, which is what lets the signature and the headers it covers be
+# computed from one clock reading. The Dockerfile loads the module and hands
+# the credentials to the workers.
+js_import s3 from /etc/nginx/njs/s3-signer.js;
+js_set $bucket_host s3.host;
+js_set $s3_date     s3.date;
+js_set $s3_key      s3.key;
+js_set $s3_auth     s3.authorization;
+
 server {
     # No IPv6 listener: some container runtimes ship without IPv6 and nginx
     # refuses to start when the address family is missing.
     listen      ${PORT};
     server_name _;
+
+    # For the bucket proxy below, which addresses the upstream through a
+    # variable. Public names only, so the platform's own resolver is not
+    # needed and this works the same in `docker run` as on Railway.
+    resolver 1.1.1.1 8.8.8.8 valid=300s ipv6=off;
+    resolver_timeout 5s;
 
     root  /usr/share/nginx/html;
     index index.html;
@@ -202,6 +221,85 @@ server {
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header Cache-Control "public, max-age=86400" always;
+    }
+
+    # The bucket root with no key is a ListObjectsV2 away from being a
+    # directory listing of everything in the bucket, and these credentials can
+    # list. Answer it here, before the prefix below ever signs anything.
+    location = /files/ {
+        return 404;
+    }
+
+    # Objects out of the private Railway bucket, signed per request. The bytes
+    # pass through this server, so they are billed as service egress — the
+    # Cache-Control each object carries is what keeps Cloudflare from asking
+    # twice.
+    location /files/ {
+        limit_except GET HEAD { deny all; }
+
+        # No bucket configured — a fork, a local build, a deployment that has
+        # not been given the variables. Say so here rather than leaving nginx
+        # to fail on an empty upstream. `if` is safe with `return`.
+        if ($bucket_host = '') {
+            return 503;
+        }
+
+        # add_header does not merge across levels, so the set is repeated here
+        # exactly as everywhere else in this file. $agent_link is empty for
+        # these URIs — they are not pages — so Link is correctly omitted.
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+        # Nothing signs the query string, and ?list-type=2 is a listing. The
+        # proxy_pass below names its own URI, but clear these so no form of
+        # them can reach the bucket.
+        set $args '';
+
+        # The signature covers exactly these three headers, in this order.
+        proxy_set_header Host                 $bucket_host;
+        proxy_set_header Authorization        $s3_auth;
+        proxy_set_header x-amz-date           $s3_date;
+        proxy_set_header x-amz-content-sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855;
+        # A visitor's cookies are for this site, not for Tigris.
+        proxy_set_header Cookie               "";
+
+        # The endpoint echoes the signing headers back and names itself in a
+        # handful of its own. None of that is a visitor's business, and the
+        # echo would publish the exact request that was signed. ETag,
+        # Last-Modified, Accept-Ranges and Cache-Control are kept — those are
+        # what make the thing cacheable and resumable.
+        proxy_hide_header x-amz-id-2;
+        proxy_hide_header x-amz-request-id;
+        proxy_hide_header x-amz-version-id;
+        proxy_hide_header x-amz-content-sha256;
+        proxy_hide_header x-amz-date;
+        proxy_hide_header x-tigris-read-source;
+        proxy_hide_header x-tigris-regions;
+        proxy_hide_header x-tigris-served-from;
+        proxy_hide_header Server-Timing;
+        proxy_hide_header Server;
+
+        # SNI is off by default, and a virtual-hosted bucket is nothing but
+        # SNI: the hostname is how the endpoint knows which bucket is meant.
+        proxy_ssl_server_name on;
+        proxy_ssl_name        $bucket_host;
+        proxy_ssl_verify      on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        # proxy_ssl_verify_depth defaults to 1, which is one short of the
+        # ordinary leaf -> intermediate -> root chain the endpoint presents,
+        # and the failure reads as "unable to get local issuer certificate"
+        # rather than as a depth limit. Three leaves room for a longer one.
+        proxy_ssl_verify_depth 3;
+
+        # S3 answers a miss with an XML document. Give the site's own 404.
+        proxy_intercept_errors on;
+
+        # The host is a variable on purpose. Written literally, nginx resolves
+        # it once while loading the config and treats a failure as fatal — a
+        # DNS blip at boot would take the whole site down rather than just
+        # this prefix. Resolved per request, the worst case is a 502 here.
+        proxy_pass https://$bucket_host$s3_key;
     }
 
     location / {
