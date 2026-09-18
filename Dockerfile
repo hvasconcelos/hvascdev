@@ -34,6 +34,34 @@ COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 ENV PORT=8080
 
+# /files/ is proxied out of a private Railway bucket, signed per request by
+# this njs module. See the location block in nginx.conf.template.
+COPY s3-signer.js /etc/nginx/njs/s3-signer.js
+
+# Two things the signer needs, both of which are main-context directives and
+# so cannot live in the template — that is included inside http{}:
+#
+#   - the njs module. The non-slim nginx:alpine image already ships
+#     ngx_http_js_module.so; nothing loads it.
+#   - the credentials. nginx strips every environment variable from its
+#     workers except TZ, so process.env in njs sees nothing unless each name
+#     is declared here. Naming an unset variable is harmless, which is what
+#     lets the image run with no bucket at all.
+#
+# Prepended rather than rewritten, so the packaged nginx.conf stays whatever
+# the base image says it is.
+RUN printf '%s\n' \
+      'load_module modules/ngx_http_js_module.so;' \
+      'env BUCKET;' \
+      'env ACCESS_KEY_ID;' \
+      'env SECRET_ACCESS_KEY;' \
+      'env REGION;' \
+      'env ENDPOINT;' \
+      'env S3_PATH_STYLE;' \
+      > /tmp/nginx.conf \
+    && cat /etc/nginx/nginx.conf >> /tmp/nginx.conf \
+    && mv /tmp/nginx.conf /etc/nginx/nginx.conf
+
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

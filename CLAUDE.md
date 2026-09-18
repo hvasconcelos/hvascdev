@@ -56,9 +56,15 @@ hvasc-web/
 │   └── styles/
 │       └── global.css
 ├── public/                      # avatar.jpg, og.png, the icon set, site.webmanifest
+├── scripts/
+│   ├── bucket.mjs               # ls/put/rm/sync against the bucket behind /files/
+│   ├── generate-article-cover.mjs
+│   ├── generate-icons.mjs
+│   └── generate-og.mjs
 ├── astro.config.mjs
 ├── Dockerfile
 ├── nginx.conf.template
+├── s3-signer.js                 # njs SigV4, so nginx can read the private bucket
 └── vercel.json
 ```
 
@@ -72,6 +78,7 @@ npm run preview   # serve dist/ locally
 npm run check     # astro check — type-checks .astro and .ts
 npm run og        # regenerate public/og.png       (committed, not part of the build)
 npm run icons     # regenerate the favicon set     (committed, not part of the build)
+npm run files     # ls/put/rm/sync the bucket served at /files/ — see Bucket-backed files
 ```
 
 There is no lint script. `npm run check` is the closest equivalent and should pass before committing.
@@ -332,6 +339,84 @@ Alphas at steps 400–700 are raised above Cursor's own so every step carrying r
 
 Use `gray-*` utilities and nothing else.
 
+## Bucket-backed files
+
+`/files/<key>` is a private Railway bucket, proxied. It is where the things a git repository should not hold go — video, hi-res artwork, a PDF, anything dropped in ad-hoc — and a file put there is live immediately, with no commit and no deploy.
+
+**The repo stays authoritative.** Everything under `public/` is still committed and still served off disk at its own URL; the bucket is additive rather than a migration. An article's cover is `/articles/<slug>.png` as it always was, and a copy under `/files/` is for the places that want a hotlinkable URL — a newsletter, a slide, somebody else's post.
+
+**Railway buckets cannot be made public**, which is the constraint the whole arrangement is shaped by. An object reaches a browser either through a presigned URL that expires, or through something of ours holding the credentials. Nothing here runs an application — nginx serving `dist/` off disk is the entire runtime — so nginx signs the requests itself, in njs.
+
+### The signing
+
+`s3-signer.js` is an njs module, loaded into nginx and wired up as four variables at the top of `nginx.conf.template`:
+
+| Variable | Is |
+| --- | --- |
+| `$bucket_host` | `${BUCKET}.${ENDPOINT}` — the Host header, the SNI name and the authority in `proxy_pass` |
+| `$s3_date` | `YYYYMMDDTHHMMSSZ`, from one clock reading |
+| `$s3_key` | the upstream path: `$uri` minus `/files`, re-encoded |
+| `$s3_auth` | the `Authorization` header |
+
+**`js_set` caches a value for the life of the request**, and that is what holds the thing together: `authorization()` reads `$s3_date`, `$s3_key` and `$bucket_host` back out of `r.variables` rather than recomputing them, so the signature covers exactly the headers that get sent, whatever order nginx evaluates the `proxy_set_header` directives in. Recomputing the timestamp inside the signer instead would straddle a second boundary now and then and fail a request for no reproducible reason.
+
+Three more things about that file:
+
+- **The method is `r.method`, not a literal `GET`.** nginx forwards a HEAD as a HEAD, and a signature over the wrong verb is no signature.
+- **Keys are `[A-Za-z0-9._/-]`.** AWS canonicalisation escapes everything outside `A-Za-z0-9-_.~`, while neither nginx nor `encodeURIComponent` escapes `!'()*` — a key carrying one of those is signed one way at the edge and another at the bucket, and fails with an error that says nothing about why. `scripts/bucket.mjs` refuses such a key at upload, which is the only place the two ends can be kept in agreement.
+- **The signing key is memoised on its scope date.** Four HMACs, changing once a day, in workers that live for weeks.
+
+### The Dockerfile does two things the template cannot
+
+`load_module` and `env` are **main-context** directives, and `nginx.conf.template` is rendered into `conf.d/`, which the stock `nginx.conf` includes inside `http {}`. So both are prepended to `/etc/nginx/nginx.conf` in the runtime stage:
+
+- **The njs module ships in the image already.** The non-slim `nginx:alpine` tags install `nginx-module-njs`; nothing loads it. (The `-slim` tags do not have it — do not switch to one.)
+- **nginx strips every environment variable from its workers except `TZ`.** `process.env` in njs sees nothing unless each name is declared with `env`. Naming an unset variable is harmless, which is what lets the image still run with no bucket at all.
+
+Keeping the credentials in `process.env` rather than substituting them into the template is deliberate: no secret is ever written into a rendered config file.
+
+### The location block
+
+- **`location = /files/` returns 404 before anything is signed.** The bucket root with no key is a `?list-type=2` away from being a directory listing of everything in the bucket, and these credentials can list. `set $args '';` in the proxied location closes the same door from the other side.
+- **`proxy_pass` addresses the host through a variable on purpose.** Written literally, nginx resolves the name once while loading the config and treats a failure as fatal — a DNS blip at boot would take *the whole site* down rather than this one prefix. Resolved per request, the worst case is a 502 here. That is what the `resolver` line is for.
+- **`proxy_ssl_server_name on;`** — SNI is off by default, and a virtual-hosted bucket is nothing but SNI: the hostname is how the endpoint knows which bucket is meant. `proxy_ssl_verify` is on, against the image's CA bundle.
+- **`proxy_ssl_verify_depth 3;`** — the default is **1**, one short of the ordinary leaf → intermediate → root chain the endpoint presents, and it fails as `upstream SSL certificate verify error: (20:unable to get local issuer certificate)`, which reads like a missing CA bundle rather than a depth limit. If that error ever comes back, `curl` the endpoint from inside the container first: curl succeeding is what tells you the bundle is fine and the depth is not.
+- **The endpoint's own response headers are hidden.** It echoes `x-amz-date` and `x-amz-content-sha256` back — publishing the exact request that was signed — and names itself in `x-tigris-*`. `ETag`, `Last-Modified`, `Accept-Ranges` and `Cache-Control` are kept, because those are what make the object cacheable and resumable.
+- **An unconfigured bucket returns 503**, via an `if ($bucket_host = '')` — `return` is one of the two directives that behave inside `if`. A fork, or a deployment nobody gave the variables to, serves the whole site normally and only this prefix is dead.
+- The three security headers are repeated here, as in every other location — see **add_header does not merge across levels**. `$agent_link` is empty for these URIs, so `Link` is correctly omitted.
+- `Range` passes through unsigned and works, which is the point for video.
+
+### Cost, which is the reason to care about caching
+
+Bucket egress is free; **service egress is not**, and a proxied byte is service egress. Cloudflare in front is what keeps that near the first fetch, so every upload gets a `Cache-Control` — `public, max-age=3600` by default, `--cache=` to override. A redirect to a presigned URL would make the bytes free but hands out an expiring `t3.storageapi.dev` link instead of an `hvasc.dev` one, and nothing caches it; the signer could grow that mode if a large file ever gets popular.
+
+### Putting things in
+
+```bash
+npm run files -- ls [prefix]
+npm run files -- put <local-path> [key] [--cache=...] [--type=...]
+npm run files -- rm  <key>
+npm run files -- sync <dir> <prefix>
+```
+
+`scripts/bucket.mjs`, no dependency — SigV4 is four HMACs and a canonical string, `node:crypto` has both and `fetch` is in the runtime, the same trade as the hand-rolled ICO and the hand-rolled sitemap. It reads the same five variable names the container reads, from `.env`, and prints the `hvasc.dev/files/…` URL on success. The origin is parsed out of `astro.config.mjs` rather than written down again.
+
+### Configuration
+
+Five runtime variables, copied from the bucket's Credentials tab — on Railway as variable references on the web service, locally in `.env`:
+
+| Variable | |
+| --- | --- |
+| `BUCKET` | the globally unique bucket name, not the display name |
+| `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY` | |
+| `REGION` | `auto` |
+| `ENDPOINT` | `https://t3.storageapi.dev` |
+| `S3_PATH_STYLE` | `1` only for a bucket old enough to want path-style URLs |
+
+`scripts/bucket.mjs` reads `.env` then `.env.local`, the latter winning, the way Astro resolves them; the container is given one with `--env-file`. Unlike `PUBLIC_UMAMI_*`, these are **runtime** rather than build-time: the container reads them when it answers a request, so they can be rotated without rebuilding, and nothing about them reaches the built site. `astro build` never sees them.
+
+**This is nginx-only**, like the `Accept` negotiation — a static Vercel export cannot sign anything, and `astro dev` has no `/files/` either. Test it in the container.
+
 ## Deployment
 
 **hvasc.dev today serves from the Docker image, behind Cloudflare** — the origin answers with `x-railway-edge`, and the response headers are the ones in `nginx.conf.template`. So that file, not `vercel.json`, is the live edge config; check changes there against the container before assuming they shipped.
@@ -343,6 +428,9 @@ Use `gray-*` utilities and nothing else.
 ```bash
 docker build -t hvasc-web .
 docker run --rm -p 8080:8080 hvasc-web
+
+# with the bucket behind /files/ — see Bucket-backed files
+docker run --rm -p 8080:8080 --env-file .env hvasc-web
 ```
 
 nginx config lives in `nginx.conf.template` and is rendered by the official image's envsubst entrypoint at startup, so `PORT` is overridable. If you edit that file, remember `${PORT}` is substituted but nginx runtime variables like `$uri` are not.
