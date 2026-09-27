@@ -5,8 +5,15 @@ export interface Project {
   language?: string
 }
 
-// Names and descriptions are taken verbatim from GitHub.
+// Names and descriptions are taken verbatim from GitHub, or from the
+// project's own site when it has no public repository.
 export const projects: Project[] = [
+  {
+    name: 'SONORA',
+    description:
+      'An analog-style polyphonic synth for Mac, standalone and as a VST3 and AU plugin, with everything on one screen.',
+    url: 'https://oryonaudio.com/sonora/',
+  },
   {
     name: 'Luzia',
     description: 'Price and Market Data Crypto API for Developers: Real-time pricing for centralized exchanges (Binance, Coinbase, Kraken, Bybit, OKX), on-chain DEX markets (Solana, Ethereum), and tokenized stocks & real-world assets — all through a single unified API.',
