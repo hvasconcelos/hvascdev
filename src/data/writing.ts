@@ -6,6 +6,11 @@ export interface BlogPost {
 
 export const blogPosts: BlogPost[] = [
   {
+    title: "What is AGI? Depends who's selling it",
+    date: 'LayerX Blog, 2026',
+    url: 'https://layerx.xyz/blog/what-is-agi',
+  },
+  {
     title: 'Enterprise AI Governance: The Layer Between AI and Your Data',
     date: 'LayerX Blog, 2026',
     url: 'https://layerx.xyz/blog/enterprise-ai-governance',
