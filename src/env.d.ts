@@ -2,15 +2,16 @@
 
 interface ImportMetaEnv {
   /**
-   * Umami website ID. Analytics are omitted entirely when this is unset, so a
-   * build without it — local dev, or somebody's fork — ships no tracker.
+   * The site's domain as registered in Plausible (its `data-domain`).
+   * Analytics are omitted entirely when this is unset, so a build without it —
+   * local dev, or somebody's fork — ships no tracker.
    */
-  readonly PUBLIC_UMAMI_WEBSITE_ID?: string
+  readonly PLAUSIBLE_DOMAIN?: string
   /**
-   * Where to load the Umami script from. Defaults to Umami Cloud; point it at
-   * your own instance when self-hosting.
+   * The Plausible origin the script loads from. Defaults to Plausible Cloud;
+   * point it at your own instance when self-hosting.
    */
-  readonly PUBLIC_UMAMI_SRC?: string
+  readonly PLAUSIBLE_HOST?: string
 }
 
 interface ImportMeta {

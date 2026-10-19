@@ -183,17 +183,17 @@ const articleGraph = article && [
 
 const graph = articleGraph || profileGraph
 
-// Umami — cookieless analytics, so there is nothing here to put behind a
+// Plausible — cookieless analytics, so there is nothing here to put behind a
 // consent banner. Both values come from the environment rather than the
 // repository, which matters twice over: `npm run dev` reports nothing, and a
 // fork that does not set them ships no tracker instead of quietly counting
 // its visitors into this site's dashboard.
-// `||` rather than `??` on the src: an unset Docker ARG forwarded through ENV
-// arrives as an empty string, not as undefined, and `??` would happily use it
-// as the script URL.
-const umamiWebsiteId = import.meta.env.PUBLIC_UMAMI_WEBSITE_ID
-const umamiSrc =
-  import.meta.env.PUBLIC_UMAMI_SRC || 'https://cloud.umami.is/script.js'
+// Read in frontmatter, which runs at build time, so they need no PUBLIC_
+// prefix — the values still end up in the HTML, but only as the tag below.
+// `||` rather than `??` on the host: an unset Docker ARG forwarded through ENV
+// arrives as an empty string, not as undefined, and `??` would happily use it.
+const plausibleDomain = import.meta.env.PLAUSIBLE_DOMAIN
+const plausibleSrc = `${(import.meta.env.PLAUSIBLE_HOST || 'https://plausible.io').replace(/\/+$/, '')}/js/script.js`
 ---
 
 <!doctype html>
@@ -262,12 +262,12 @@ const umamiSrc =
 
     {/*
       is:inline keeps Astro's bundler away from it — this has to stay the exact
-      tag Umami serves, loaded from their origin, not something rolled into the
-      site's own JS.
+      tag Plausible serves, loaded from their origin, not something rolled into
+      the site's own JS.
     */}
     {
-      umamiWebsiteId && (
-        <script is:inline defer src={umamiSrc} data-website-id={umamiWebsiteId} />
+      plausibleDomain && (
+        <script is:inline defer data-domain={plausibleDomain} src={plausibleSrc} />
       )
     }
 

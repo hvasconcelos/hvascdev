@@ -12,14 +12,14 @@ RUN npm ci
 
 COPY . .
 
-# Astro inlines PUBLIC_* into the static output at build time, so these have to
-# be present here rather than at `docker run` — passing them to the runtime
-# container would be too late to reach the HTML. Both are optional: without an
-# ID the analytics tag is simply not emitted.
-ARG PUBLIC_UMAMI_WEBSITE_ID
-ARG PUBLIC_UMAMI_SRC
-ENV PUBLIC_UMAMI_WEBSITE_ID=$PUBLIC_UMAMI_WEBSITE_ID
-ENV PUBLIC_UMAMI_SRC=$PUBLIC_UMAMI_SRC
+# The analytics settings are baked into the static output at build time, so
+# these have to be present here rather than at `docker run` — passing them to
+# the runtime container would be too late to reach the HTML. Both are
+# optional: without a domain the analytics tag is simply not emitted.
+ARG PLAUSIBLE_DOMAIN
+ARG PLAUSIBLE_HOST
+ENV PLAUSIBLE_DOMAIN=$PLAUSIBLE_DOMAIN
+ENV PLAUSIBLE_HOST=$PLAUSIBLE_HOST
 
 RUN npm run build
 

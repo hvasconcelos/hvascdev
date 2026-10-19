@@ -9,10 +9,18 @@ export interface Project {
 // project's own site when it has no public repository.
 export const projects: Project[] = [
   {
+    name: 'Trellis',
+    description:
+      'Give every project its own window, every window its own tabs, and every tab as many splits as it needs. Trellis is a native Swift terminal for macOS that keeps it all in a sidebar and brings it back after a restart, with saved SSH hosts and a local API for scripts and AI agents.',
+    url: 'https://trellis.bearstouch.com',
+    language: 'Swift',
+  },
+  {
     name: 'SONORA',
     description:
       'An analog-style polyphonic synth for Mac, standalone and as a VST3 and AU plugin, with everything on one screen.',
     url: 'https://oryonaudio.com/sonora/',
+    language: 'C++',
   },
   {
     name: 'Luzia',
@@ -38,7 +46,7 @@ export const projects: Project[] = [
     name: 'postwoman',
     description:
       'PostWoman 💅 is a lightweight Postman alternative designed specifically for macOS',
-    url: 'https://github.com/King-Bong-Software/postwoman',
+    url: 'https://github.com/bearstouch/postwoman',
     language: 'Swift',
   },
   {

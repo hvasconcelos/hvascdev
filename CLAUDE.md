@@ -284,21 +284,21 @@ There is deliberately **no SVG favicon** — browsers prefer `image/svg+xml` ove
 
 ## Analytics
 
-Umami, emitted by `Layout.astro`. Cookieless, so there is nothing to put behind a consent banner and none is added.
+Plausible, emitted by `Layout.astro`. Cookieless, so there is nothing to put behind a consent banner and none is added.
 
 Configured by two environment variables, typed in `src/env.d.ts`:
 
 | Variable | Purpose |
 | --- | --- |
-| `PUBLIC_UMAMI_WEBSITE_ID` | The site's Umami ID. **Unset means the script tag is not emitted at all.** |
-| `PUBLIC_UMAMI_SRC` | Script origin; defaults to Umami Cloud. Only needed when self-hosting. |
+| `PLAUSIBLE_DOMAIN` | The site's domain as registered in Plausible (`data-domain`). **Unset means the script tag is not emitted at all.** |
+| `PLAUSIBLE_HOST` | Plausible origin; the script is `<host>/js/script.js`. Defaults to `https://plausible.io`. Only needed when self-hosting. |
 
 Four things to keep in mind:
 
-- **Keep it environment-driven, not hardcoded.** The absent-by-default behaviour is the point: `npm run dev` sends nothing, and since the repo is MIT and the footer invites forking, a fork that has not set its own ID must not report into this site's dashboard.
-- **`PUBLIC_*` is inlined at build time**, not read at runtime. `docker run -e` is too late — the Dockerfile takes `ARG PUBLIC_UMAMI_WEBSITE_ID` / `ARG PUBLIC_UMAMI_SRC` in the build stage for this reason.
-- **The src fallback uses `||`, not `??`.** An unset Docker `ARG` forwarded through `ENV` arrives as an empty string rather than `undefined`, and `??` would accept it and emit `src=""`.
-- **The tag is `is:inline`.** It must stay the exact tag Umami serves, loaded from their origin — letting Astro bundle it would fold a third-party script into the site's own JS.
+- **Keep it environment-driven, not hardcoded.** The absent-by-default behaviour is the point: `npm run dev` sends nothing, and since the repo is MIT and the footer invites forking, a fork that has not set its own domain must not report into this site's dashboard.
+- **Both are read at build time**, not at runtime — `Layout.astro`'s frontmatter runs during `astro build`, which is also why they need no `PUBLIC_` prefix. `docker run -e` is too late — the Dockerfile takes `ARG PLAUSIBLE_DOMAIN` / `ARG PLAUSIBLE_HOST` in the build stage for this reason.
+- **The host fallback uses `||`, not `??`.** An unset Docker `ARG` forwarded through `ENV` arrives as an empty string rather than `undefined`, and `??` would accept it and emit `src="/js/script.js"`.
+- **The tag is `is:inline`.** It must stay the exact tag Plausible serves, loaded from their origin — letting Astro bundle it would fold a third-party script into the site's own JS.
 
 ## Theming
 
@@ -413,7 +413,7 @@ Five runtime variables, copied from the bucket's Credentials tab — on Railway 
 | `ENDPOINT` | `https://t3.storageapi.dev` |
 | `S3_PATH_STYLE` | `1` only for a bucket old enough to want path-style URLs |
 
-`scripts/bucket.mjs` reads `.env` then `.env.local`, the latter winning, the way Astro resolves them; the container is given one with `--env-file`. Unlike `PUBLIC_UMAMI_*`, these are **runtime** rather than build-time: the container reads them when it answers a request, so they can be rotated without rebuilding, and nothing about them reaches the built site. `astro build` never sees them.
+`scripts/bucket.mjs` reads `.env` then `.env.local`, the latter winning, the way Astro resolves them; the container is given one with `--env-file`. Unlike `PLAUSIBLE_*`, these are **runtime** rather than build-time: the container reads them when it answers a request, so they can be rotated without rebuilding, and nothing about them reaches the built site. `astro build` never sees them.
 
 **This is nginx-only**, like the `Accept` negotiation — a static Vercel export cannot sign anything, and `astro dev` has no `/files/` either. Test it in the container.
 

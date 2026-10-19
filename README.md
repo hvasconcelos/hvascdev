@@ -153,26 +153,26 @@ Behaviour: the play/pause choice persists in `localStorage`; playback pauses whe
 
 ## Analytics
 
-[Umami](https://umami.is), which is cookieless and stores no personal data — hence no consent banner. It is **off unless configured**:
+[Plausible](https://plausible.io), which is cookieless and stores no personal data — hence no consent banner. It is **off unless configured**:
 
 ```bash
-cp .env.example .env      # then fill in PUBLIC_UMAMI_WEBSITE_ID
+cp .env.example .env      # then fill in PLAUSIBLE_DOMAIN
 ```
 
 | Variable | Required | Default |
 | --- | --- | --- |
-| `PUBLIC_UMAMI_WEBSITE_ID` | yes, to enable | — (unset ⇒ no script emitted) |
-| `PUBLIC_UMAMI_SRC` | only when self-hosting | `https://cloud.umami.is/script.js` |
+| `PLAUSIBLE_DOMAIN` | yes, to enable | — (unset ⇒ no script emitted) |
+| `PLAUSIBLE_HOST` | only when self-hosting | `https://plausible.io` |
 
-With no ID set, the tag is not emitted at all — so `npm run dev` reports nothing, and a fork that has not configured its own ID does not count visitors into somebody else's dashboard.
+With no domain set, the tag is not emitted at all — so `npm run dev` reports nothing, and a fork that has not configured its own domain does not count visitors into somebody else's dashboard.
 
-Both are read at **build** time, since Astro inlines `PUBLIC_*` into the static HTML. Set them where the build runs:
+Both are read at **build** time and baked into the static HTML. Set them where the build runs:
 
 - **Vercel** — Project Settings → Environment Variables, then redeploy.
 - **Docker** — build arguments, not `docker run -e`, which would be too late:
 
   ```bash
-  docker build --build-arg PUBLIC_UMAMI_WEBSITE_ID=xxxx -t hvasc-web .
+  docker build --build-arg PLAUSIBLE_DOMAIN=hvasc.dev -t hvasc-web .
   ```
 
 ## Theming
