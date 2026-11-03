@@ -9,10 +9,17 @@ export interface Project {
 // project's own site when it has no public repository.
 export const projects: Project[] = [
   {
+    name: 'Keel',
+    description:
+      'One calm Mac app for Redis, Valkey and Dragonfly. Browse millions of keys with SCAN, edit every core type, run commands in a redis-cli-style console and keep production read-only.',
+    url: 'https://bearstouch.com/keel',
+    language: 'Swift',
+  },
+  {
     name: 'Trellis',
     description:
-      'Give every project its own window, every window its own tabs, and every tab as many splits as it needs. Trellis is a native Swift terminal for macOS that keeps it all in a sidebar and brings it back after a restart, with saved SSH hosts and a local API for scripts and AI agents.',
-    url: 'https://trellis.bearstouch.com',
+      'Every project gets a window, every window its tabs, every tab its panes. Launch whole projects on your Mac or a saved host, see which coding agent needs you, and keep sessions running after you quit. Free and open source.',
+    url: 'https://bearstouch.com/trellis/',
     language: 'Swift',
   },
   {
