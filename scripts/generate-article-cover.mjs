@@ -40,6 +40,12 @@ const jobs = [
     out: '../public/articles/agi-two-scoreboards.png',
     ground: [20, 20, 23],
   },
+  {
+    // Drawn on the page colour already, so this one is only the palette pass.
+    in: '../articles/assets/trellis-more-than-a-terminal-card.png',
+    out: '../public/articles/trellis-more-than-a-terminal.png',
+    ground: PAGE,
+  },
 ]
 
 /**
