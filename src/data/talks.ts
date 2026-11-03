@@ -10,6 +10,11 @@ export interface Talk {
 /** Most recent first, matching the Writing section. */
 export const talks: Talk[] = [
   {
+    title: 'Model Selection is Capacity Planning',
+    event: 'API Community',
+    date: 'October 2026',
+  },
+  {
     title: 'AI Inference Stack',
     event: 'Agents Day, Ceeia',
     date: 'July 2026',

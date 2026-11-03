@@ -166,7 +166,7 @@ Each page section is a `<CollapsibleSection id title defaultOpen?>` in `index.as
 - One global script in `CollapsibleSection.astro` wires **every** instance by querying `details[data-collapsible]`. Astro `<script>` tags are bundled once and module-scoped, so per-instance logic must go through DOM queries, never per-component state.
 - Closing animates height before flipping `open`; during that window the element carries `.is-closing` so the chevron un-rotates immediately.
 - `prefers-reduced-motion: reduce` skips the animation entirely.
-- Currently **About** starts open (`defaultOpen`); Experience, Side Projects, Education and Writing start collapsed.
+- Every section starts open: `defaultOpen` defaults to `true`, and `defaultOpen={false}` collapses one.
 
 ## Design Principles
 
